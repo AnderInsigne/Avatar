@@ -1,1 +1,209 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Avatar IA Interactivo</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0f172a; color: #f8fafc; min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; }
+        .container { width: 100%; max-width: 500px; background: #1e293b; border-radius: 16px; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.3); overflow: hidden; display: flex; flex-direction: column; }
+        .avatar-box { width: 100%; aspect-ratio: 1; background: #334155; position: relative; display: flex; align-items: center; justify-content: center; overflow: hidden; border-bottom: 2px solid #0f172a; }
+        .avatar-img { width: 100%; height: 100%; object-fit: cover; }
+        .avatar-overlay { position: absolute; bottom: 10px; left: 10px; background: rgba(15, 23, 42, 0.7); padding: 4px 10px; border-radius: 20px; font-size: 0.75rem; color: #38bdf8; font-weight: bold; }
+        .chat-area { flex-grow: 1; padding: 15px; max-height: 200px; overflow-y: auto; background: #111827; font-size: 0.9rem; border-bottom: 1px solid #334155; }
+        .msg { margin-bottom: 10px; padding: 8px 12px; border-radius: 8px; line-height: 1.4; max-width: 85%; }
+        .msg-avatar { background: #1e293b; color: #f1f5f9; align-self: flex-start; border-left: 3px solid #3b82f6; }
+        .msg-user { background: #2563eb; color: #ffffff; margin-left: auto; text-align: right; }
+        .controls { padding: 15px; background: #1e293b; }
+        .input-group { display: flex; gap: 8px; }
+        input[type="text"] { flex-grow: 1; padding: 10px 14px; border-radius: 8px; border: 1px solid #475569; background: #0f172a; color: #fff; font-size: 0.95rem; }
+        input[type="text"]:focus { outline: none; border-color: #3b82f6; }
+        button { padding: 10px 16px; border-radius: 8px; border: none; background: #2563eb; color: white; font-weight: bold; cursor: pointer; font-size: 0.95rem; transition: background 0.2s; }
+        button:hover { background: #1d4ed8; }
+        button:disabled { background: #64748b; cursor: not-allowed; }
+        .lock-screen { display: none; text-align: center; padding: 10px 0; }
+        .lock-screen p { color: #f43f5e; font-size: 0.9rem; margin-bottom: 10px; font-weight: bold; }
+        .counter-badge { font-size: 0.8rem; color: #94a3b8; text-align: center; margin-top: 10px; }
+    </style>
+</head>
+<body>
 
+<div class="container">
+    <div class="avatar-box">
+        <!-- Aquí se integrará el elemento de video o canvas de la API de streaming -->
+        <img id="avatarImage" src="1000006354.jpg" alt="Avatar" class="avatar-img">
+        <div class="avatar-overlay" id="statusTrack">EN LÍNEA</div>
+    </div>
+
+    <div class="chat-area" id="chatArea"></div>
+
+    <div class="controls">
+        <div id="interactiveControls">
+            <div class="input-group">
+                <input type="text" id="userInput" placeholder="Haz una pregunta sobre el destino..." onkeypress="checkEnter(event)">
+                <button id="sendBtn" onclick="processQuestion()">Enviar</button>
+            </div>
+            <div class="counter-badge" id="counterDisplay">Preguntas realizadas: 0 / 3</div>
+        </div>
+
+        <div id="lockControls" class="lock-screen">
+            <p>Has agotado tus tres preguntas. Para continuar necesitarás una clave de acceso.</p>
+            <div class="input-group">
+                <input type="text" id="pinInput" placeholder="Introduce el código PIN...">
+                <button onclick="verifyUnlockPin()" style="background: #10b981;">Desbloquear</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // CONFIGURACIÓN REQUERIDA
+    const MASTER_PIN = "2026"; // Código PIN predefinido para desbloquear la sesión
+    
+    // Lista estricta de respuestas simuladas basadas en las pistas conceptuales
+    const MOCK_ANSWERS = [
+        "Depende de lo que busques. Lo único seguro es que conviene estar preparado para los cambios, el tiempo allí siempre es imprevisible.",
+        "Podría ser una excelente opción meterlo en la maleta, aunque la ropa de abrigo tampoco te vendrá mal en absoluto.",
+        "No puedo darte nombres directos ni ubicaciones geográficas concretas, pero tiene muchísima historia guardada entre sus piedras.",
+        "Siempre hay sorpresas esperándote. Quién sabe quién o qué aparecerá en tu camino.",
+        "Es un sitio fascinante donde las piedras y la arena batida cuentan su propio relato del pasado.",
+        "Solo te diré que los santos tienen un papel muy singular en este destino misterioso.",
+        "No voy a decir nada más por ahora. Disfruta de la intriga, seguro que te va a encantar la sorpresa."
+    ];
+
+    let currentQuestions = parseInt(localStorage.getItem('avatar_q_count')) || 0;
+    let isLocked = localStorage.getItem('avatar_is_locked') === 'true';
+    let userName = "Visitante";
+
+    window.onload = function() {
+        // 1. Extraer nombre de la URL (?nombre=Carlos)
+        const urlParams = new URLSearchParams(window.location.search);
+        if(urlParams.has('nombre') && urlParams.get('nombre').trim() !== "") {
+            userName = urlParams.get('nombre').trim();
+        }
+
+        // 2. Comprobar estado de bloqueo
+        if(isLocked || currentQuestions >= 3) {
+            triggerLockdown();
+        } else {
+            updateCounterDisplay();
+            // Saludo inicial automático
+            appendMessage("avatar", `Hola, ${userName}. Me alegra verte. Tengo una pequeña sorpresa para ti. Puedes hacerme hasta tres preguntas para intentar descubrirla.`);
+        }
+    };
+
+    function updateCounterDisplay() {
+        document.getElementById('counterDisplay').innerText = `Preguntas realizadas: ${currentQuestions} / 3`;
+    }
+
+    function checkEnter(e) {
+        if(e.key === 'Enter') processQuestion();
+    }
+
+    function appendMessage(sender, text) {
+        const chatArea = document.getElementById('chatArea');
+        const msgDiv = document.createElement('div');
+        msgDiv.className = `msg ${sender === 'avatar' ? 'msg-avatar' : 'msg-user'}`;
+        msgDiv.innerText = text;
+        chatArea.appendChild(msgDiv);
+        chatArea.scrollTop = chatArea.scrollHeight;
+    }
+
+    function processQuestion() {
+        const inputEl = document.getElementById('userInput');
+        const query = inputEl.value.trim();
+        if(query === "") return;
+
+        if(currentQuestions >= 3) {
+            triggerLockdown();
+            return;
+        }
+
+        // Registrar y mostrar pregunta del usuario
+        appendMessage("user", query);
+        inputEl.value = "";
+        currentQuestions++;
+        localStorage.setItem('avatar_q_count', currentQuestions);
+        updateCounterDisplay();
+
+        // Deshabilitar entrada temporalmente simulando carga
+        document.getElementById('userInput').disabled = true;
+        document.getElementById('sendBtn').disabled = true;
+        document.getElementById('statusTrack').innerText = "PENSANDO...";
+
+        setTimeout(() => {
+            // Obtener respuesta simulada basada en palabras clave
+            let responseText = selectBestResponse(query);
+            appendMessage("avatar", responseText);
+            
+            document.getElementById('userInput').disabled = false;
+            document.getElementById('sendBtn').disabled = false;
+            document.getElementById('statusTrack').innerText = "EN LÍNEA";
+
+            if(currentQuestions >= 3) {
+                setTimeout(() => { triggerLockdown(); }, 1000);
+            }
+        }, 1200);
+    }
+
+    function selectBestResponse(query) {
+        const q = query.toLowerCase();
+        if(q.includes('tiempo') || q.includes('clima') || q.includes('calor') || q.includes('frio') || q.includes('temperatura')) {
+            return MOCK_ANSWERS[0];
+        }
+        if(q.includes('bañador') || q.includes('ropa') || q.includes('abrigo') || q.includes('llevar')) {
+            return MOCK_ANSWERS[1];
+        }
+        if(q.includes('ciudad') || q.includes('pais') || q.includes('donde') || q.includes('lugar') || q.includes('nombre')) {
+            return MOCK_ANSWERS[2];
+        }
+        if(q.includes('sorpresa') || q.includes('quien')) {
+            return MOCK_ANSWERS[3];
+        }
+        if(q.includes('playa') || q.includes('arena') || q.includes('piedra')) {
+            return MOCK_ANSWERS[4];
+        }
+        if(q.includes('santo') || q.includes('iglesia') || q.includes('historia')) {
+            return MOCK_ANSWERS[5];
+        }
+        // Respuesta por defecto que engloba el misterio
+        return MOCK_ANSWERS[Math.floor(Math.random() * MOCK_ANSWERS.length)];
+    }
+
+    function triggerLockdown() {
+        localStorage.setItem('avatar_is_locked', 'true');
+        document.getElementById('interactiveControls').style.display = 'none';
+        document.getElementById('lockControls').style.display = 'block';
+        document.getElementById('statusTrack').innerText = "SESIÓN BLOQUEADA";
+        
+        // Limpiar chat y mostrar solo advertencia si entra ya bloqueado
+        const chatArea = document.getElementById('chatArea');
+        if(chatArea.children.length === 0) {
+            appendMessage("avatar", "La sesión interactiva se encuentra suspendida. Introduce el código de desbloqueo.");
+        }
+    }
+
+    function verifyUnlockPin() {
+        const pinIn = document.getElementById('pinInput').value.trim();
+        if(pinIn === MASTER_PIN) {
+            // Resetear estados
+            currentQuestions = 0;
+            localStorage.setItem('avatar_q_count', 0);
+            localStorage.setItem('avatar_is_locked', 'false');
+            
+            document.getElementById('lockControls').style.display = 'none';
+            document.getElementById('interactiveControls').style.display = 'block';
+            document.getElementById('statusTrack').innerText = "EN LÍNEA";
+            document.getElementById('pinInput').value = "";
+            
+            updateCounterDisplay();
+            appendMessage("avatar", `¡Acceso concedido! Hola de nuevo, ${userName}. El contador se ha reiniciado. Puedes hacerme otras 3 preguntas.`);
+        } else {
+            alert("Código PIN incorrecto. Acceso denegado.");
+            document.getElementById('pinInput').value = "";
+        }
+    }
+</script>
+</body>
+</html>
